@@ -1,14 +1,15 @@
-import { Component, Element, h, Host, Watch, Prop, Event, EventEmitter } from '@stencil/core';
+import { Component, Element, h, Host, Watch, Prop, Event, EventEmitter, Method, State } from '@stencil/core';
 import { Viewer } from 'openseadragon';
 
 import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
-import { getElement, findElement } from '../../lib/elements';
+import { closestAcrossShadows, getElement, findElement } from '../../lib/elements';
 import { referenceError, type PreviewError } from '../../lib/errors';
 import { adoptWebAwesomeTheme, initialTheme, waScope } from '../../lib/init';
 import type ImagePreviewer from '../../lib/previewers/image';
 import Theme from '../../lib/themes/theme';
+import { pixelRegionFor, type ContentSearchAnnotation, type PixelRegion } from '../../lib/content-search';
 
 @Component({
   tag: 'ogm-image',
@@ -33,10 +34,19 @@ export class OgmImage {
   // Guards against reporting more than one error per load attempt
   private errorReported: boolean = false;
 
+  // A Content Search result stays selected while its image is opening. OpenSeadragon can only
+  // convert image pixels once the tile source is ready, so an early click is applied on `open`.
+  private pendingRegion?: PixelRegion;
+  private searchHighlight?: HTMLElement;
+
   // Before the first frame, so nothing paints unstyled
   componentWillLoad() {
     adoptWebAwesomeTheme(this.el);
   }
+
+  @State() fullscreen: boolean = false;
+  private fullscreenFallback: boolean = false;
+  private fullscreenFallbackElement?: HTMLElement;
 
   // Set up OpenSeadragon viewer on load
   async componentDidLoad() {
@@ -59,13 +69,22 @@ export class OgmImage {
       zoomInButton: getElement(this.el, '.zoom-in'),
       zoomOutButton: getElement(this.el, '.zoom-out'),
       homeButton: getElement(this.el, '.home'),
-      fullPageButton: getElement(this.el, '.full-page'),
       nextButton: getElement(this.el, '.next'),
       previousButton: getElement(this.el, '.prev'),
     });
 
+    // OpenSeadragon's full-page implementation temporarily removes every child from <body>. A
+    // viewer mounted in this component's shadow root then disappears from document.getElementById,
+    // so OpenSeadragon throws before it can put the image back. Keep the shadow tree together and
+    // ask the browser to fullscreen its host instead.
+    document.addEventListener('fullscreenchange', this.onFullscreenChange);
+    document.addEventListener('keydown', this.onFullscreenKeydown);
+
     // Clear loading state whether we succeeded or failed
-    this.viewer.addHandler('open', () => this.imageLoaded.emit());
+    this.viewer.addHandler('open', () => {
+      this.imageLoaded.emit();
+      this.showPendingRegion();
+    });
 
     // Surface OpenSeaDragon decode errors here
     this.viewer.addHandler('open-failed', event => {
@@ -79,6 +98,10 @@ export class OgmImage {
 
   // Destroy the viewer when we are removed from the DOM
   disconnectedCallback() {
+    document.removeEventListener('fullscreenchange', this.onFullscreenChange);
+    document.removeEventListener('keydown', this.onFullscreenKeydown);
+    this.exitFullscreenFallback();
+    this.removeSearchHighlight();
     this.viewer?.destroy();
   }
 
@@ -86,7 +109,19 @@ export class OgmImage {
   @Watch('previewer')
   async onPreviewerChange(_previewer: ImagePreviewer, previous?: ImagePreviewer) {
     if (previous) await previous.clearPreview();
+    this.pendingRegion = undefined;
+    this.removeSearchHighlight();
     await this.loadPreview();
+  }
+
+  /** Focus the image-pixel selector carried by a IIIF Content Search annotation. */
+  @Method()
+  async focusAnnotation(annotation: ContentSearchAnnotation): Promise<boolean> {
+    const region = pixelRegionFor(annotation);
+    if (!region) return false;
+    this.pendingRegion = region;
+    if (this.viewer?.world?.getItemCount()) this.showPendingRegion();
+    return true;
   }
 
   @Watch('padding')
@@ -134,6 +169,77 @@ export class OgmImage {
     this.previewError.emit(referenceError(error, this.previewer.label(), this.previewer.url));
   }
 
+  private showPendingRegion() {
+    if (!this.pendingRegion || !this.viewer) return;
+    this.removeSearchHighlight();
+
+    const { x, y, width, height } = this.pendingRegion;
+    const bounds = this.viewer.viewport.imageToViewportRectangle(x, y, width, height);
+    const highlight = document.createElement('div');
+    highlight.className = 'content-search-highlight';
+    highlight.setAttribute('role', 'img');
+    highlight.setAttribute('aria-label', 'Selected search result');
+    this.viewer.addOverlay({ element: highlight, location: bounds });
+    this.viewer.viewport.fitBounds(bounds, true);
+    this.searchHighlight = highlight;
+  }
+
+  private removeSearchHighlight() {
+    if (!this.searchHighlight) return;
+    this.viewer?.removeOverlay(this.searchHighlight);
+    this.searchHighlight.remove();
+    this.searchHighlight = undefined;
+  }
+
+  private onFullscreenChange = () => {
+    this.fullscreen = this.fullscreenTarget().matches(':fullscreen') || this.fullscreenFallback;
+  };
+
+  private onFullscreenKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape' && this.fullscreenFallback) this.exitFullscreenFallback();
+  };
+
+  private exitFullscreenFallback() {
+    this.fullscreenFallbackElement?.removeAttribute('data-ogm-fullscreen-fallback');
+    this.fullscreenFallbackElement = undefined;
+    this.fullscreenFallback = false;
+    this.fullscreen = false;
+  }
+
+  // Fullscreen the complete viewer when one contains this image. The menubar owns the hamburger and
+  // the sidebar owns search, metadata, rights, links and the raw record; targeting only <ogm-image>
+  // necessarily hides all of them. A standalone image still fullscreens itself.
+  private fullscreenTarget(): HTMLElement {
+    return closestAcrossShadows(this.el, 'ogm-viewer') ?? this.el;
+  }
+
+  private async toggleFullscreen() {
+    if (this.fullscreenFallback) {
+      this.exitFullscreenFallback();
+      return;
+    }
+
+    // document.fullscreenElement may be retargeted to an outer shadow host. Our state is updated
+    // from the element's :fullscreen match instead, so the same button remains a reliable exit.
+    if (this.fullscreen) {
+      await document.exitFullscreen();
+      this.fullscreen = false;
+      return;
+    }
+
+    try {
+      await this.fullscreenTarget().requestFullscreen();
+      this.fullscreen = true;
+    } catch {
+      // Fullscreen may be unavailable in an embedding context. A fixed-position host preserves the
+      // same useful full-window view without moving the OpenSeadragon node out of its shadow root.
+      this.fullscreenFallbackElement = this.fullscreenTarget();
+      this.fullscreenFallbackElement.setAttribute('data-ogm-fullscreen-fallback', '');
+      this.fullscreenFallback = true;
+      this.fullscreen = true;
+    }
+  }
+
   // The scope goes on #openseadragon as well as on the Host: the palette is established by plain
   // class selectors, which the stylesheet linked here can't match against its own shadow host. The
   // controls below and the viewer's own background read from it.
@@ -151,8 +257,8 @@ export class OgmImage {
             <wa-button class="home" size="s" appearance="filled-outlined" pill>
               <wa-icon name="house" label="Reset View" canvas="auto"></wa-icon>
             </wa-button>
-            <wa-button class="full-page" size="s" appearance="filled-outlined" pill>
-              <wa-icon name="arrows-fullscreen" label="Full Screen" canvas="auto"></wa-icon>
+            <wa-button class="full-page" size="s" appearance="filled-outlined" pill onClick={() => this.toggleFullscreen()}>
+              <wa-icon name="arrows-fullscreen" label={this.fullscreen ? 'Exit Full Screen' : 'Full Screen'} canvas="auto"></wa-icon>
             </wa-button>
             <wa-button class="next" size="s" appearance="filled-outlined" pill>
               <wa-icon name="arrow-right" label="Next" canvas="auto"></wa-icon>
