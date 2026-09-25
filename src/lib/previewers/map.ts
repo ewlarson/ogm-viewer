@@ -69,6 +69,7 @@ export default abstract class MapPreviewer extends Previewer {
   // to satisfy would be called broken while it draws, and one exempted by mistake goes back to
   // failing silently. See <ogm-map>'s startLoadDeadline.
   readonly reportsDrawing: boolean = false;
+  readonly supportsGeographicSearch: boolean = false;
 
   // Named colors this preview needs explained on the map. Most previews draw one ordinary data
   // color, which needs no key; a preview whose colors carry distinct meanings overrides this.

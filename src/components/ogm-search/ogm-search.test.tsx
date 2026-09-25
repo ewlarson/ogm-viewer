@@ -89,3 +89,50 @@ describe('ogm-search', () => {
     expect(selected.mock.calls[0][0].detail.id).toBe('https://example.org/annotations/2');
   });
 });
+
+it('browses immediately and emits the same filtered occurrences shown in the list', async () => {
+  const entries = [
+    {
+      id: 'park',
+      label: 'Harriet Park',
+      category: 'park',
+      categoryLabel: 'Parks',
+      description: 'Parks',
+      sources: ['GNIS'],
+      searchText: 'harriet park',
+      annotations: [response.items[0]],
+    },
+    {
+      id: 'road',
+      label: 'Market Street',
+      category: 'street',
+      categoryLabel: 'Streets',
+      description: 'Streets',
+      sources: ['Overture'],
+      searchText: 'market street',
+      annotations: [response.items[1]],
+    },
+  ];
+  const { root, waitForChanges } = await render(<ogm-search searchUrl="https://example.org/search" browseResults={entries}></ogm-search>);
+  const shadow = root.shadowRoot!;
+  expect(shadow.querySelectorAll('.browse-card')).toHaveLength(2);
+  const filtered = vi.fn();
+  root.addEventListener('contentSearchResultsFiltered', filtered);
+  const input = shadow.querySelector('input')!;
+  input.value = 'MARKET';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  await waitForChanges();
+  expect(shadow.querySelectorAll('.browse-card')).toHaveLength(1);
+  expect(filtered.mock.calls.at(-1)?.[0].detail).toEqual([response.items[1]]);
+  const select = shadow.querySelector('select')!;
+  select.value = 'park';
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+  await waitForChanges();
+  expect(shadow.querySelectorAll('.browse-card')).toHaveLength(0);
+  expect(filtered.mock.calls.at(-1)?.[0].detail).toEqual([]);
+  (shadow.querySelector('.clear-filters') as HTMLButtonElement).click();
+  await waitForChanges();
+  expect(shadow.querySelectorAll('.browse-card')).toHaveLength(2);
+  expect(select.value).toBe('all');
+  expect(filtered.mock.calls.at(-1)?.[0].detail).toHaveLength(2);
+});

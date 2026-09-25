@@ -1,5 +1,6 @@
 import { Component, Element, Event, EventEmitter, h, Host, Listen, Method, Prop, State, Watch } from '@stencil/core';
 import maplibregl from 'maplibre-gl';
+import type { ContentSearchAnnotation } from '../../lib/content-search';
 
 import { closestAcrossShadows, findElement, getElement } from '../../lib/elements';
 import { referenceError, TimeoutError, type PreviewError } from '../../lib/errors';
@@ -31,6 +32,7 @@ const QUERY_WINDOW = 51;
 export class OgmMap {
   @Element() el!: HTMLElement;
   @Prop() previewer: MapPreviewer;
+  @Prop() searchAnnotations: ContentSearchAnnotation[] = [];
   @Prop() theme: 'light' | 'dark' = initialTheme(this.el);
   // A caller's own basemap for each mode, as a URL to a MapLibre style document; see
   // MapLibreTheme.getBaseMapStyle. Undefined keeps this library's own default.
@@ -87,6 +89,98 @@ export class OgmMap {
   protected attributesEl: HTMLOgmAttributesElement;
   protected hoveredFeature: maplibregl.MapGeoJSONFeature | undefined = undefined;
   protected selectedFeature: maplibregl.MapGeoJSONFeature | undefined = undefined;
+
+  @Event({ bubbles: true, composed: true }) contentSearchResultSelected!: EventEmitter<ContentSearchAnnotation>;
+  @Event({ bubbles: true, composed: true }) contentSearchPopupRequested!: EventEmitter<{ annotation: ContentSearchAnnotation; container: HTMLElement; dispose?: () => void }>;
+  private searchPopup?: maplibregl.Popup;
+  private searchMarkers: maplibregl.Marker[] = [];
+
+  @Watch('searchAnnotations')
+  updateSearchMarkers() {
+    this.clearSearchHighlight?.();
+    this.searchPopup?.remove();
+    this.searchMarkers.forEach(marker => marker.remove());
+    this.searchMarkers = [];
+    if (!this.map || !this.previewer?.supportsGeographicSearch) return;
+    for (const annotation of this.searchAnnotations) {
+      const evidence = annotation['wherehence:evidence'] as { label?: string; geographicPoint?: [number, number]; pointStyle?: { color: string; radius: number } } | undefined;
+      const point = evidence?.geographicPoint;
+      if (!point || !point.every(Number.isFinite)) continue;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.setAttribute('aria-label', `Show ${evidence.label || 'result'} crop`);
+      button.title = evidence.label || 'Map result';
+      // Visual tokens come from the host's existing Wherehence discovery atlas.
+      const dot = document.createElement('span');
+      const radius = evidence.pointStyle?.radius ?? 3.4;
+      dot.style.cssText = `display:block;width:${radius * 2}px;height:${radius * 2}px;border-radius:50%;background:currentColor;pointer-events:none`;
+      button.style.cssText = 'display:grid;place-items:center;width:24px;height:24px;border:0;background:transparent;cursor:pointer;padding:0;border-radius:50%';
+      button.style.color = evidence.pointStyle?.color ?? '#48dec8';
+      button.appendChild(dot);
+      button.onclick = event => {
+        event.stopPropagation();
+        this.contentSearchResultSelected.emit(annotation);
+      };
+      this.searchMarkers.push(new maplibregl.Marker({ element: button }).setLngLat(point).addTo(this.map));
+    }
+  }
+
+  private clearSearchHighlight?: () => void;
+
+  /** Focus the crop footprint supplied by the host's saved image alignment. */
+  @Method()
+  async focusAnnotation(annotation: ContentSearchAnnotation): Promise<boolean> {
+    if (!this.map || !this.previewer.supportsGeographicSearch) return false;
+    const evidence = annotation['wherehence:evidence'] as { geographicFootprint?: { geometry?: { coordinates?: number[][][] } } } | undefined;
+    const ring = evidence?.geographicFootprint?.geometry?.coordinates?.[0];
+    if (!ring || ring.length < 4 || ring.some(p => p.length !== 2 || !p.every(Number.isFinite))) return false;
+    this.clearSearchHighlight?.();
+    this.searchPopup?.remove();
+    const point = (annotation['wherehence:evidence'] as { geographicPoint?: [number, number] })?.geographicPoint;
+    if (point) {
+      const container = document.createElement('div');
+      const detail: { annotation: ContentSearchAnnotation; container: HTMLElement; dispose?: () => void } = { annotation, container };
+      this.searchPopup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px', offset: 16, className: 'wherehence-evidence-popup' })
+        .setLngLat(point)
+        .setDOMContent(container)
+        .addTo(this.map);
+      this.searchPopup.on('close', () => detail.dispose?.());
+      this.contentSearchPopupRequested.emit(detail);
+    }
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    svg.setAttribute('aria-label', 'Selected image crop');
+    Object.assign(svg.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', pointerEvents: 'none', zIndex: '2' });
+    polygon.setAttribute('fill', 'rgba(62,198,216,0.12)');
+    polygon.setAttribute('stroke', '#3ec6d8');
+    polygon.setAttribute('stroke-width', '3');
+    svg.appendChild(polygon);
+    this.map.getContainer().appendChild(svg);
+    const update = () =>
+      polygon.setAttribute(
+        'points',
+        ring
+          .map(p => {
+            const point = this.map.project([p[0], p[1]]);
+            return `${point.x},${point.y}`;
+          })
+          .join(' '),
+      );
+    this.map.on('render', update);
+    this.clearSearchHighlight = () => {
+      this.map.off('render', update);
+      svg.remove();
+    };
+    update();
+    this.map.fitBounds(
+      [
+        [Math.min(...ring.map(p => p[0])), Math.min(...ring.map(p => p[1]))],
+        [Math.max(...ring.map(p => p[0])), Math.max(...ring.map(p => p[1]))],
+      ],
+      { padding: { top: 50, bottom: 50, left: this.padding + 50, right: 50 }, maxZoom: 20, duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 600 },
+    );
+    return true;
+  }
 
   // Before the first frame, so nothing paints unstyled
   componentWillLoad() {
@@ -151,6 +245,10 @@ export class OgmMap {
   // back into the map to clear the highlight and hands the features back to whoever is listening. All
   // of that wants a map that is still there, so it happens before the map goes rather than during it.
   disconnectedCallback() {
+    this.searchPopup?.remove();
+    this.searchMarkers.forEach(marker => marker.remove());
+    this.searchMarkers = [];
+    this.clearSearchHighlight?.();
     this.clearLoadDeadline();
     this.destroyPopup();
     if (this.map) this.map.remove();
@@ -246,6 +344,7 @@ export class OgmMap {
       // preview that is already on screen
       this.previewer.attach(this.map, this.mapTheme.getStyle());
       await this.previewer.preview();
+      this.updateSearchMarkers();
 
       // The map has been told what to draw, so this is where the wait for it to actually appear
       // begins. Started before the bounds are fitted rather than after, because the tiles the

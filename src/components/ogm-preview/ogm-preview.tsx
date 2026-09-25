@@ -19,6 +19,7 @@ type AnnotationImage = HTMLElement & {
 })
 export class OgmPreview {
   @Element() el!: HTMLElement;
+  @Prop() searchAnnotations: ContentSearchAnnotation[] = [];
   @Prop() theme: 'light' | 'dark' = initialTheme(this.el);
   // A caller's own basemap for each mode, as a URL to a MapLibre style document; see
   // MapLibreTheme.getBaseMapStyle. Undefined keeps this library's own default. Only reaches the map
@@ -51,7 +52,7 @@ export class OgmPreview {
   /** Focus a IIIF Content Search annotation when this is an image preview. */
   @Method()
   async focusAnnotation(annotation: ContentSearchAnnotation): Promise<boolean> {
-    const image = findElement(this.el, 'ogm-image') as AnnotationImage | undefined;
+    const image = findElement(this.el, this.previewer?.renderer === 'map' ? 'ogm-map' : 'ogm-image') as AnnotationImage | undefined;
     if (!image) return false;
     await image.componentOnReady?.();
     return image.focusAnnotation(annotation);
@@ -68,6 +69,7 @@ export class OgmPreview {
         darkBasemap={this.darkBasemap}
         lightBasemap={this.lightBasemap}
         previewer={this.previewer}
+        searchAnnotations={this.searchAnnotations}
         padding={this.sidebarPadding}
         cooperativeGestures={this.cooperativeGestures}
       ></ogm-map>

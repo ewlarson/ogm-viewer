@@ -1,3 +1,4 @@
+import type { BrowseResult } from '../../lib/search-browse';
 import { Component, Element, h, Host, Prop } from '@stencil/core';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
@@ -20,6 +21,7 @@ export class OgmSidebar {
   @Prop() record: OgmRecord;
   @Prop() theme: 'light' | 'dark';
   @Prop() open: boolean = false;
+  @Prop() browseResults?: BrowseResult[];
   @Prop() searchUrl?: string;
   @Prop() requestTransform?: RequestTransform;
 
@@ -37,7 +39,7 @@ export class OgmSidebar {
 
   // If open and no active tab, show the info tab
   componentDidUpdate() {
-    if (this.open && !this.activeTabPanel) this.tabs.active = 'information';
+    if (this.open && !this.activeTabPanel) this.tabs.active = this.browseResults ? 'search' : 'information';
   }
 
   render() {
@@ -48,7 +50,25 @@ export class OgmSidebar {
           <wa-tab-group placement="start">
             {this.searchUrl && (
               <wa-tab slot="nav" panel="search">
-                <wa-icon name="search" label="Search within this map" canvas="auto"></wa-icon>
+                {this.browseResults ? (
+                  <svg
+                    role="img"
+                    aria-label="Map results"
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" />
+                    <circle cx="12" cy="10" r="3" />
+                  </svg>
+                ) : (
+                  <wa-icon name="search" label="Search within this map" canvas="auto"></wa-icon>
+                )}
               </wa-tab>
             )}
             <wa-tab slot="nav" panel="information">
@@ -65,9 +85,9 @@ export class OgmSidebar {
             </wa-tab>
             {this.searchUrl && (
               <wa-tab-panel name="search">
-                <div class="panel-header">Search within this map</div>
+                <div class="panel-header">{this.browseResults ? 'Map results' : 'Search within this map'}</div>
                 <div class="panel-content">
-                  <ogm-search searchUrl={this.searchUrl} requestTransform={this.requestTransform} theme={this.theme}></ogm-search>
+                  <ogm-search browseResults={this.browseResults} searchUrl={this.searchUrl} requestTransform={this.requestTransform} theme={this.theme}></ogm-search>
                 </div>
               </wa-tab-panel>
             )}

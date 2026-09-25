@@ -1,3 +1,4 @@
+import type { BrowseResult } from '../../lib/search-browse';
 import { Component, Element, Host, Listen, Method, Prop, State, Watch, h } from '@stencil/core';
 
 import OgmRecord from '../../lib/record';
@@ -22,11 +23,15 @@ export class OgmViewer {
   @Prop() hideTitle: boolean = false;
   // A IIIF Content Search 2 endpoint for this record. When present, the sidebar offers search and
   // selecting a result focuses its image-pixel selector in the image preview.
+  @Prop() browseResults?: BrowseResult[];
   @Prop() searchUrl?: string;
+  @Prop() preferGeoreferenced: boolean = false;
+  @Prop() searchOpen: boolean = false;
   // Applied to the record fetch itself, and passed down to every resource built from it - see
   // Resource.requestTransform. A DOM property, like previewer on <ogm-preview>: set it before or
   // alongside recordUrl, since changing it alone doesn't refetch an already-loaded record.
   @Prop() requestTransform?: RequestTransform;
+  @State() filteredAnnotations: ContentSearchAnnotation[] = [];
   @State() record?: OgmRecord;
   @State() error?: PreviewError;
   @State() sidebarOpen: boolean = false;
@@ -39,14 +44,18 @@ export class OgmViewer {
   // Prior to rendering, take the theme and fetch the record if a URL is provided
   async componentWillLoad() {
     adoptWebAwesomeTheme(this.el);
-    if (this.recordUrl) return await this.updateRecord();
+    if (this.recordUrl) await this.updateRecord();
+    if (this.searchOpen && this.el.getBoundingClientRect().width >= 700) {
+      this.sidebarOpen = true;
+      this.sidebarPadding = 400;
+    }
   }
 
   // Shift the map/image over when the sidebar is toggled open
   @Listen('sidebarToggled')
   toggleSidebar() {
     this.sidebarOpen = !this.sidebarOpen;
-    this.sidebarPadding = this.sidebarOpen ? 400 : 0;
+    this.sidebarPadding = this.sidebarOpen && this.el.getBoundingClientRect().width >= 700 ? 400 : 0;
   }
 
   // When URL changes, fetch the new record
@@ -88,8 +97,17 @@ export class OgmViewer {
     this.loading = false;
   }
 
+  @Listen('contentSearchResultsFiltered')
+  filterContentSearchResults(event: CustomEvent<ContentSearchAnnotation[]>) {
+    this.filteredAnnotations = event.detail;
+  }
+
   @Listen('contentSearchResultSelected')
   async focusContentSearchResult(event: CustomEvent<ContentSearchAnnotation>) {
+    if (this.el.getBoundingClientRect().width < 700) {
+      this.sidebarOpen = false;
+      this.sidebarPadding = 0;
+    }
     await this.previews?.focusAnnotation(event.detail);
   }
 
@@ -118,6 +136,7 @@ export class OgmViewer {
               theme={this.theme}
               record={this.record}
               open={this.sidebarOpen}
+              browseResults={this.browseResults}
               searchUrl={this.searchUrl ?? this.record?.references.iiifSearchUrl}
               requestTransform={this.requestTransform}
             ></ogm-sidebar>
@@ -130,6 +149,8 @@ export class OgmViewer {
                 darkBasemap={this.darkBasemap}
                 lightBasemap={this.lightBasemap}
                 record={this.record}
+                preferGeoreferenced={this.preferGeoreferenced}
+                searchAnnotations={this.filteredAnnotations}
                 requestTransform={this.requestTransform}
                 sidebar-padding={this.sidebarPadding}
               ></ogm-previews>
