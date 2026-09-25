@@ -174,3 +174,235 @@ button:disabled {
   border-radius: var(--wa-border-radius-s);
   cursor: pointer;
 }
+
+/* Wherehence browse mode uses the host's canonical categories and ranking. */
+:host(.browse) {
+  color: #11151a;
+  font: 14px/1.5 var(--wa-font-family-body);
+}
+.browse-filters {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #d7ded8;
+  border-radius: 8px;
+}
+.browse-filters label {
+  color: #626970;
+  font-size: 12px;
+  font-weight: 500;
+}
+.browse-filters input,
+.browse-filters select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  padding: 0 10px;
+  border: 1px solid #d7ded8;
+  border-radius: 6px;
+  background: #fbfbf8;
+  color: #11151a;
+  font: inherit;
+}
+.browse-filters :focus-visible,
+.browse-card button:focus-visible,
+.show-more:focus-visible {
+  outline: 2px solid #176bcc;
+  outline-offset: 2px;
+}
+.clear-filters,
+.show-more {
+  color: #176bcc;
+  background: white;
+  border: 1px solid #d7ded8;
+  border-radius: 6px;
+  padding: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+.browse-group {
+  margin: 24px 0;
+}
+.browse-group-heading {
+  display: flex;
+  align-items: start;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-bottom: 1px solid #d7ded8;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+.browse-group-heading h3 {
+  margin: 0;
+  flex: 1;
+  font-size: 18px;
+  font-weight: 600;
+}
+.browse-group-heading span {
+  color: #176bcc;
+  background: #eaf2ff;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.browse-group-heading p {
+  width: 100%;
+  margin: 0;
+  color: #626970;
+  font-size: 12px;
+}
+.browse-card {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  border: 1px solid #d7ded8;
+  border-radius: 8px;
+  overflow: hidden;
+  background: white;
+  margin-bottom: 12px;
+}
+.browse-card:hover {
+  border-color: #176bcc;
+}
+.browse-crop {
+  position: relative;
+  overflow: hidden;
+  border: 0;
+  padding: 0;
+  background: #fbfbf8;
+  cursor: pointer;
+  min-height: 108px;
+}
+.browse-crop[aria-pressed='true']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 3px solid #3ec6d8;
+  pointer-events: none;
+}
+.browse-crop img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.browse-card-body {
+  padding: 12px;
+  min-width: 0;
+}
+.browse-card h4 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.browse-category {
+  margin: 0 0 4px;
+  color: #626970;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.browse-reading {
+  color: #626970;
+  font-size: 12px;
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+.browse-occurrences {
+  grid-column: 1/-1;
+  border-top: 1px solid #d7ded8;
+  padding: 8px;
+  font-size: 12px;
+}
+.browse-occurrences summary {
+  cursor: pointer;
+  color: #176bcc;
+}
+.browse-occurrences button {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid #d7ded8;
+  background: #fff;
+  color: #11151a;
+  cursor: pointer;
+  text-align: left;
+}
+.browse-occurrences img {
+  width: 64px;
+  height: 44px;
+  object-fit: cover;
+  background: #fbfbf8;
+}
+
+/* Match Wherehence GazetteerAuthorityBadges in styles.css across the shadow boundary. */
+.gaz-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.gaz-badge {
+  background-color: #455a64;
+  text-decoration: none;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  box-shadow: 0 1px 2px rgb(12 23 38 / 0.18);
+  cursor: pointer;
+}
+
+.gaz-badge:hover {
+  filter: brightness(1.1);
+}
+
+.gaz-badge--geonames {
+  background: #00796b;
+}
+
+.gaz-badge--gnis {
+  background: #006bb6;
+}
+
+.gaz-badge--wof {
+  background: #b93378;
+}
+
+.gaz-badge--osm {
+  background: #4f8a10;
+}
+
+.gaz-badge--overture {
+  background: #6c4acb;
+}
+
+.gaz-badge--wikidata {
+  background: #c77800;
+}
+
+.gaz-badge--gazetteer {
+  background: #455a64;
+}
+
+.gaz-badge:focus-visible {
+  outline: 2px solid #176bcc;
+  outline-offset: 2px;
+}

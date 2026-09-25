@@ -1,3 +1,4 @@
+import { filterBrowseResults, type BrowseResult } from '../../lib/search-browse';
 import { Component, Element, Event, EventEmitter, Host, Prop, State, Watch, h } from '@stencil/core';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
@@ -30,6 +31,7 @@ type SearchResultGroup = {
 })
 export class OgmSearch {
   @Element() el!: HTMLElement;
+  @Prop() browseResults?: BrowseResult[];
   @Prop() searchUrl!: string;
   @Prop() requestTransform?: RequestTransform;
   @Prop() theme: 'light' | 'dark' = initialTheme(this.el);
@@ -45,7 +47,159 @@ export class OgmSearch {
   @State() private error?: string;
   @Event({ bubbles: true, composed: true }) contentSearchResultSelected!: EventEmitter<ContentSearchAnnotation>;
 
+  @State() private category = 'all';
+  @State() private visibleCounts: Record<string, number> = {};
+  @State() private selectedId?: string;
+  @Event({ bubbles: true, composed: true }) contentSearchResultsFiltered!: EventEmitter<ContentSearchAnnotation[]>;
   private pending = 0;
+
+  componentDidLoad() {
+    if (this.browseResults) this.emitFiltered();
+  }
+
+  @Watch('browseResults')
+  resetBrowse() {
+    this.query = '';
+    this.category = 'all';
+    this.visibleCounts = {};
+    this.selectedId = undefined;
+    this.emitFiltered();
+  }
+
+  private emitFiltered() {
+    this.selectedId = undefined;
+    this.visibleCounts = {};
+    this.contentSearchResultsFiltered.emit(filterBrowseResults(this.browseResults || [], this.query, this.category).flatMap(row => row.annotations));
+  }
+
+  private selectBrowse(annotation: ContentSearchAnnotation) {
+    this.selectedId = annotation.id;
+    this.contentSearchResultSelected.emit(annotation);
+  }
+
+  private renderBrowse() {
+    const all = this.browseResults || [];
+    const filtered = filterBrowseResults(all, this.query, this.category);
+    const categories = [...new Map(all.map(row => [row.category, row])).values()];
+    const occurrences = filtered.reduce((sum, row) => sum + row.annotations.length, 0);
+    return (
+      <Host class={`${waScope(this.theme)} browse`}>
+        <section class="browse-filters" aria-label="Search and filter map results">
+          <label htmlFor="browse-query">Filter by keywords</label>
+          <input
+            id="browse-query"
+            type="search"
+            placeholder="Names, printed words, or places"
+            value={this.query}
+            onInput={event => {
+              this.query = (event.target as HTMLInputElement).value;
+              this.emitFiltered();
+            }}
+          />
+          <label htmlFor="browse-category">Feature category</label>
+          <select
+            id="browse-category"
+            onChange={event => {
+              this.category = (event.target as HTMLSelectElement).value;
+              this.emitFiltered();
+            }}
+          >
+            <option value="all" selected={this.category === 'all'}>
+              All categories · {all.length}
+            </option>
+            {categories.map(row => (
+              <option value={row.category} selected={this.category === row.category}>
+                {row.categoryLabel} · {all.filter(r => r.category === row.category).length}
+              </option>
+            ))}
+          </select>
+          {(this.query || this.category !== 'all') && (
+            <button
+              type="button"
+              class="clear-filters"
+              onClick={() => {
+                this.query = '';
+                this.category = 'all';
+                this.emitFiltered();
+              }}
+            >
+              Clear all filters
+            </button>
+          )}
+        </section>
+        <p class="status" role="status">
+          {filtered.length} of {all.length} results · {occurrences} map {occurrences === 1 ? 'occurrence' : 'occurrences'}
+        </p>
+        {!filtered.length && <p class="status">No results match the current search and filters.</p>}
+        {categories.map(category => {
+          const rows = filtered.filter(row => row.category === category.category);
+          if (!rows.length) return null;
+          const limit = this.visibleCounts[category.category] || 12;
+          return (
+            <section class="browse-group" aria-label={category.categoryLabel}>
+              <header class="browse-group-heading">
+                <h3>{category.categoryLabel}</h3>
+                <span>{rows.length}</span>
+                <p>{category.description}</p>
+              </header>
+              {rows.slice(0, limit).map(row => (
+                <article class="browse-card" key={row.id}>
+                  <button
+                    type="button"
+                    class="browse-crop"
+                    aria-label={`Show ${row.label} on map`}
+                    aria-pressed={this.selectedId === row.annotations[0].id}
+                    onClick={() => this.selectBrowse(row.annotations[0])}
+                  >
+                    <img src={annotationThumbnail(row.annotations[0])} alt="" loading="lazy" />
+                  </button>
+                  <div class="browse-card-body">
+                    <p class="browse-category">{row.categoryLabel}</p>
+                    <h4>{row.label}</h4>
+                    <span class="gaz-badges" aria-label={`Gazetteer authorities for ${row.label}`}>
+                      {(row.badges || []).map(badge => (
+                        <a
+                          class={`gaz-badge gaz-badge--${badge.key}`}
+                          href={badge.href}
+                          aria-label={`${badge.label}: ${badge.name}`}
+                          title={`Authority: ${badge.label} · ${badge.name} (${badge.id})`}
+                        >
+                          {badge.symbol}
+                        </a>
+                      ))}
+                    </span>
+                    <p class="browse-reading">Printed: “{annotationOcrText(row.annotations[0])}”</p>
+                  </div>
+                  {row.annotations.length > 1 && (
+                    <details class="browse-occurrences">
+                      <summary>{row.annotations.length} occurrences</summary>
+                      {row.annotations.map((annotation, index) => (
+                        <button type="button" aria-label={`Show occurrence ${index + 1} of ${row.label}`} onClick={() => this.selectBrowse(annotation)}>
+                          <img src={annotationThumbnail(annotation)} alt="" loading="lazy" />
+                          <span>{annotationOcrText(annotation)}</span>
+                        </button>
+                      ))}
+                    </details>
+                  )}
+                </article>
+              ))}
+              {rows.length > limit && (
+                <button
+                  class="show-more"
+                  type="button"
+                  onClick={() => {
+                    this.visibleCounts = { ...this.visibleCounts, [category.category]: limit + 24 };
+                  }}
+                >
+                  Show {Math.min(24, rows.length - limit)} more {category.categoryLabel.toLocaleLowerCase()}
+                </button>
+              )}
+            </section>
+          );
+        })}
+      </Host>
+    );
+  }
 
   componentWillLoad() {
     adoptWebAwesomeTheme(this.el);
@@ -161,6 +315,7 @@ export class OgmSearch {
   }
 
   render() {
+    if (this.browseResults) return this.renderBrowse();
     return (
       <Host class={waScope(this.theme)}>
         <form role="search" onSubmit={event => this.onSubmit(event)}>

@@ -169,3 +169,18 @@ ogm-legend {
     background-color: rgb(255 255 255 / 10%);
   }
 }
+
+.wherehence-evidence-popup .maplibregl-popup-content {
+  padding: 0;
+  background: #fbfbf6;
+  border-radius: 0;
+}
+.wherehence-evidence-popup .maplibregl-popup-close-button {
+  z-index: 5;
+  color: #152437;
+  background: #fbfbf6;
+  font-size: 18px;
+}
+.wherehence-evidence-popup .scan-map-label:before {
+  display: none;
+}

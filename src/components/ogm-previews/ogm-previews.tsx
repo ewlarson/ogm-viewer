@@ -25,12 +25,14 @@ type AnnotationPreview = HTMLElement & {
 })
 export class OgmPreviews {
   @Element() el!: HTMLElement;
+  @Prop() searchAnnotations: ContentSearchAnnotation[] = [];
   @Prop() theme: 'light' | 'dark' = initialTheme(this.el);
   // A caller's own basemap for each mode, as a URL to a MapLibre style document; see
   // MapLibreTheme.getBaseMapStyle. Undefined keeps this library's own default.
   @Prop() darkBasemap?: string;
   @Prop() lightBasemap?: string;
   @Prop() record?: OgmRecord;
+  @Prop() preferGeoreferenced: boolean = false;
   // Previews to show, for an application that builds its own rather than handing over a record - the
   // tab strip is worth having either way. Takes the place of `record`, which is then not read at all.
   // A DOM property, like `record`: neither survives being written as an attribute.
@@ -51,7 +53,10 @@ export class OgmPreviews {
   // Every preview to show, one per tab: the ones we were handed, or else the ones this record turned
   // out to offer.
   private get tabs(): AnyPreviewer[] {
-    return this.previewers ?? this.recordPreviewers;
+    const tabs = this.previewers ?? this.recordPreviewers;
+    return this.preferGeoreferenced
+      ? [...tabs].sort((a, b) => Number(b.renderer === 'map' && b.supportsGeographicSearch) - Number(a.renderer === 'map' && a.supportsGeographicSearch))
+      : tabs;
   }
 
   // @Watch only fires on changes, so the record we were rendered with is handled here. Returning
@@ -90,7 +95,11 @@ export class OgmPreviews {
   /** Open the image preview and focus a IIIF Content Search annotation in it. */
   @Method()
   async focusAnnotation(annotation: ContentSearchAnnotation): Promise<boolean> {
-    const index = this.tabs.findIndex(previewer => previewer.renderer === 'image');
+    const evidence = annotation['wherehence:evidence'] as { geographicFootprint?: unknown } | undefined;
+    const geographic = evidence?.geographicFootprint;
+    const index = geographic
+      ? this.tabs.findIndex(previewer => previewer.renderer === 'map' && previewer.supportsGeographicSearch)
+      : this.tabs.findIndex(previewer => previewer.renderer === 'image');
     if (index < 0) return false;
 
     const group = findElement(this.el, 'wa-tab-group') as WaTabGroup | undefined;
@@ -136,6 +145,7 @@ export class OgmPreviews {
                 darkBasemap={this.darkBasemap}
                 lightBasemap={this.lightBasemap}
                 previewer={previewer}
+                searchAnnotations={this.searchAnnotations}
                 sidebar-padding={this.sidebarPadding}
               ></ogm-preview>
             </wa-tab-panel>

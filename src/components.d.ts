@@ -14,6 +14,7 @@ import { LayerControl } from "./lib/layers";
 import { ColorRampName } from "./lib/colormap";
 import { LegendEntry } from "./lib/legend";
 import { AnyPreviewer } from "./lib/previewers/factory";
+import { BrowseResult } from "./lib/search-browse";
 export { PreviewError } from "./lib/errors";
 export { MapGeoJSONFeature } from "maplibre-gl";
 export { ResourceKind } from "./lib/resources/resource";
@@ -23,6 +24,7 @@ export { LayerControl } from "./lib/layers";
 export { ColorRampName } from "./lib/colormap";
 export { LegendEntry } from "./lib/legend";
 export { AnyPreviewer } from "./lib/previewers/factory";
+export { BrowseResult } from "./lib/search-browse";
 export namespace Components {
     interface OgmAlerts {
         "error"?: PreviewError;
@@ -96,12 +98,20 @@ export namespace Components {
         "cooperativeGestures": boolean;
         "darkBasemap"?: string;
         "easeMapTo": (options: maplibregl.EaseToOptions) => Promise<maplibregl.Map>;
+        /**
+          * Focus the crop footprint supplied by the host's saved image alignment.
+         */
+        "focusAnnotation": (annotation: ContentSearchAnnotation) => Promise<boolean>;
         "lightBasemap"?: string;
         /**
           * @default 0
          */
         "padding": number;
         "previewer": MapPreviewer;
+        /**
+          * @default []
+         */
+        "searchAnnotations": ContentSearchAnnotation[];
         /**
           * @default initialTheme(this.el)
          */
@@ -180,6 +190,10 @@ export namespace Components {
         "focusAnnotation": (annotation: ContentSearchAnnotation) => Promise<boolean>;
         "lightBasemap"?: string;
         "previewer": AnyPreviewer;
+        /**
+          * @default []
+         */
+        "searchAnnotations": ContentSearchAnnotation[];
         "sidebarPadding": number;
         /**
           * @default initialTheme(this.el)
@@ -193,9 +207,17 @@ export namespace Components {
          */
         "focusAnnotation": (annotation: ContentSearchAnnotation) => Promise<boolean>;
         "lightBasemap"?: string;
+        /**
+          * @default false
+         */
+        "preferGeoreferenced": boolean;
         "previewers"?: AnyPreviewer[];
         "record"?: OgmRecord;
         "requestTransform"?: RequestTransform;
+        /**
+          * @default []
+         */
+        "searchAnnotations": ContentSearchAnnotation[];
         "sidebarPadding": number;
         /**
           * @default initialTheme(this.el)
@@ -203,6 +225,7 @@ export namespace Components {
         "theme": 'light' | 'dark';
     }
     interface OgmSearch {
+        "browseResults"?: BrowseResult[];
         "requestTransform"?: RequestTransform;
         "searchUrl": string;
         /**
@@ -211,6 +234,7 @@ export namespace Components {
         "theme": 'light' | 'dark';
     }
     interface OgmSidebar {
+        "browseResults"?: BrowseResult[];
         /**
           * @default false
          */
@@ -221,6 +245,7 @@ export namespace Components {
         "theme": 'light' | 'dark';
     }
     interface OgmViewer {
+        "browseResults"?: BrowseResult[];
         "darkBasemap"?: string;
         /**
           * @default false
@@ -228,8 +253,16 @@ export namespace Components {
         "hideTitle": boolean;
         "lightBasemap"?: string;
         "loadRecord": (record: OgmRecord) => Promise<void>;
+        /**
+          * @default false
+         */
+        "preferGeoreferenced": boolean;
         "recordUrl": string;
         "requestTransform"?: RequestTransform;
+        /**
+          * @default false
+         */
+        "searchOpen": boolean;
         "searchUrl"?: string;
         /**
           * @default initialTheme(this.el)
@@ -348,6 +381,8 @@ declare global {
         "mapIdle": void;
         "mapLoading": void;
         "previewError": PreviewError;
+        "contentSearchResultSelected": ContentSearchAnnotation;
+        "contentSearchPopupRequested": { annotation: ContentSearchAnnotation; container: HTMLElement; dispose?: () => void };
     }
     interface HTMLOgmMapElement extends Components.OgmMap, HTMLStencilElement {
         addEventListener<K extends keyof HTMLOgmMapElementEventMap>(type: K, listener: (this: HTMLOgmMapElement, ev: OgmMapCustomEvent<HTMLOgmMapElementEventMap[K]>) => any, options?: boolean | AddEventListenerOptions): void;
@@ -438,6 +473,7 @@ declare global {
     };
     interface HTMLOgmSearchElementEventMap {
         "contentSearchResultSelected": ContentSearchAnnotation;
+        "contentSearchResultsFiltered": ContentSearchAnnotation[];
     }
     interface HTMLOgmSearchElement extends Components.OgmSearch, HTMLStencilElement {
         addEventListener<K extends keyof HTMLOgmSearchElementEventMap>(type: K, listener: (this: HTMLOgmSearchElement, ev: OgmSearchCustomEvent<HTMLOgmSearchElementEventMap[K]>) => any, options?: boolean | AddEventListenerOptions): void;
@@ -562,6 +598,8 @@ declare namespace LocalJSX {
         "cooperativeGestures"?: boolean;
         "darkBasemap"?: string;
         "lightBasemap"?: string;
+        "onContentSearchPopupRequested"?: (event: OgmMapCustomEvent<{ annotation: ContentSearchAnnotation; container: HTMLElement; dispose?: () => void }>) => void;
+        "onContentSearchResultSelected"?: (event: OgmMapCustomEvent<ContentSearchAnnotation>) => void;
         "onMapIdle"?: (event: OgmMapCustomEvent<void>) => void;
         "onMapLoading"?: (event: OgmMapCustomEvent<void>) => void;
         "onPreviewError"?: (event: OgmMapCustomEvent<PreviewError>) => void;
@@ -570,6 +608,10 @@ declare namespace LocalJSX {
          */
         "padding"?: number;
         "previewer"?: MapPreviewer;
+        /**
+          * @default []
+         */
+        "searchAnnotations"?: ContentSearchAnnotation[];
         /**
           * @default initialTheme(this.el)
          */
@@ -650,6 +692,10 @@ declare namespace LocalJSX {
         "darkBasemap"?: string;
         "lightBasemap"?: string;
         "previewer"?: AnyPreviewer;
+        /**
+          * @default []
+         */
+        "searchAnnotations"?: ContentSearchAnnotation[];
         "sidebarPadding"?: number;
         /**
           * @default initialTheme(this.el)
@@ -661,9 +707,17 @@ declare namespace LocalJSX {
         "lightBasemap"?: string;
         "onPreviewsLoaded"?: (event: OgmPreviewsCustomEvent<void>) => void;
         "onPreviewsLoading"?: (event: OgmPreviewsCustomEvent<void>) => void;
+        /**
+          * @default false
+         */
+        "preferGeoreferenced"?: boolean;
         "previewers"?: AnyPreviewer[];
         "record"?: OgmRecord;
         "requestTransform"?: RequestTransform;
+        /**
+          * @default []
+         */
+        "searchAnnotations"?: ContentSearchAnnotation[];
         "sidebarPadding"?: number;
         /**
           * @default initialTheme(this.el)
@@ -671,7 +725,9 @@ declare namespace LocalJSX {
         "theme"?: 'light' | 'dark';
     }
     interface OgmSearch {
+        "browseResults"?: BrowseResult[];
         "onContentSearchResultSelected"?: (event: OgmSearchCustomEvent<ContentSearchAnnotation>) => void;
+        "onContentSearchResultsFiltered"?: (event: OgmSearchCustomEvent<ContentSearchAnnotation[]>) => void;
         "requestTransform"?: RequestTransform;
         "searchUrl": string;
         /**
@@ -680,6 +736,7 @@ declare namespace LocalJSX {
         "theme"?: 'light' | 'dark';
     }
     interface OgmSidebar {
+        "browseResults"?: BrowseResult[];
         /**
           * @default false
          */
@@ -690,14 +747,23 @@ declare namespace LocalJSX {
         "theme"?: 'light' | 'dark';
     }
     interface OgmViewer {
+        "browseResults"?: BrowseResult[];
         "darkBasemap"?: string;
         /**
           * @default false
          */
         "hideTitle"?: boolean;
         "lightBasemap"?: string;
+        /**
+          * @default false
+         */
+        "preferGeoreferenced"?: boolean;
         "recordUrl"?: string;
         "requestTransform"?: RequestTransform;
+        /**
+          * @default false
+         */
+        "searchOpen"?: boolean;
         "searchUrl"?: string;
         /**
           * @default initialTheme(this.el)
@@ -765,6 +831,7 @@ declare namespace LocalJSX {
         "theme": 'light' | 'dark';
         "darkBasemap": string;
         "lightBasemap": string;
+        "preferGeoreferenced": boolean;
         "sidebarPadding": number;
     }
     interface OgmSearchAttributes {
@@ -783,6 +850,8 @@ declare namespace LocalJSX {
         "lightBasemap": string;
         "hideTitle": boolean;
         "searchUrl": string;
+        "preferGeoreferenced": boolean;
+        "searchOpen": boolean;
     }
 
     interface IntrinsicElements {

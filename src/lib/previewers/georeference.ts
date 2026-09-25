@@ -33,6 +33,7 @@ export default class GeoreferencePreviewer extends MapPreviewer {
   // half again, and the warped map slides off the globe. So this preview asks for the flat map it is
   // actually drawn on, and <ogm-map> takes the globe control away with it.
   readonly projection = 'mercator' as const;
+  readonly supportsGeographicSearch: boolean = true;
 
   // Tilting is the same mistake by another route, that viewport having no pitch either: out by a
   // quarter at 30 degrees and more than double at 60. Nothing to fall back on, so it is held flat.
@@ -63,7 +64,7 @@ export default class GeoreferencePreviewer extends MapPreviewer {
   }
 
   protected async createLayers(): Promise<AddLayerObject[]> {
-    this.layer = new WarpedMapLayer({ layerId: this.getLayerId() });
+    this.layer = new WarpedMapLayer({ layerId: this.getLayerId(), internalProjection: { id: 'EPSG:4326', definition: '+proj=longlat +datum=WGS84 +no_defs' } });
 
     this.previewLayers.push({
       id: this.getLayerId(),

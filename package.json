@@ -26,7 +26,7 @@
     "dist/"
   ],
   "scripts": {
-    "assets": "node scripts/inline-assets.mjs",
+    "assets": "node scripts/fix-allmaps-padding.mjs && node scripts/inline-assets.mjs",
     "prebuild": "npm run assets",
     "build": "stencil build",
     "prepare": "npm run build",
